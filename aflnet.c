@@ -1,3 +1,4 @@
+#include <complex.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -234,7 +235,7 @@ region_t* extract_requests_NTP(unsigned char* buf, unsigned int buf_size, unsign
 
     for (unsigned int byte_count = 0; byte_count < buf_size; byte_count++) {
     memcpy(&mem[mem_count], buf + byte_count, 1);
- 
+
     if (mem_count==47){
 
         region_count++;
@@ -960,61 +961,48 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
   return regions;
 }
 
-region_t* extract_requests_mqtt(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
+region_t* extract_requests_IEC61850(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
 {
-  char *mem;
-  unsigned int mem_count = 0;
-  unsigned int mem_size = 1024;
+  unsigned int byte_count = 0;
   unsigned int region_count = 0;
-  unsigned int cur_start = 0;
-  unsigned int cur_end = 0;
   region_t *regions = NULL;
-  mem=(char *)ck_alloc(mem_size);
-  while(cur_start < buf_size)
-  {
-		if ((buf_size - cur_start) == 1) {
-			region_count++;
-			regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
-			regions[region_count - 1].start_byte = cur_start;
-			regions[region_count - 1].end_byte = buf_size - 1;
-			regions[region_count - 1].state_sequence = NULL;
-			regions[region_count - 1].state_count = 0;	
-			break;	
-		}
-    // Read the packet header
-    memcpy(&mem[mem_count], buf + cur_start, 2);
-    cur_start = cur_start + 2;
-    // Check the packet length and update current_end
-    // mem[0] is Message Type. mem[1] is Msg Len.
-    if(mem[1] >= 0) 
-      cur_end = cur_start + mem[1] - 1;
-    else
-      cur_end = buf_size;
-    // Create a region for every request
-		region_count++;
-		regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
-		regions[region_count - 1].start_byte = cur_start - 2;
-		regions[region_count - 1].end_byte = cur_end;
-		regions[region_count - 1].state_sequence = NULL;
-		regions[region_count - 1].state_count = 0;
-    // Update the indices
-    mem_count = 0;
-    cur_start = cur_end + 1;
-    cur_end = cur_start;
+
+  while (byte_count < buf_size) {
+    // Check if the packet starts with 03 00
+    if (buf[byte_count] == 0x03 && buf[byte_count + 1] == 0x00) {
+      // Read the length field from the start of the packet
+      unsigned int packet_length = (buf[byte_count + 2] << 8) | buf[byte_count + 3];
+
+      // Check if the packet length is valid
+      if (packet_length > 0 && packet_length <= buf_size - byte_count) {
+        region_count++;
+        // printf("Region count: %d\n", region_count);
+        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+        regions[region_count - 1].start_byte = byte_count;
+        regions[region_count - 1].end_byte = byte_count + packet_length - 1;
+        regions[region_count - 1].state_sequence = NULL;
+        regions[region_count - 1].state_count = 0;
+
+        // Move to the start of the next packet
+        byte_count += packet_length;
+
+        // printf("Request: ");
+        // for (unsigned int i = regions[region_count - 1].start_byte; i <= regions[region_count - 1].end_byte; i++) {
+        //   printf("%02X ", buf[i]);
+        // }
+        // printf("\n");
+      } else {
+        // Invalid packet length, skip this packet
+        byte_count += 2;
+      }
+    } else {
+      // Not a valid packet start, skip this byte
+      byte_count++;
+    }
   }
-  if(mem) ck_free(mem);
-  //in case region_count equals zero, it means that the structure of the buffer is broken
-  //hence we create one region for the whole buffer
-	if ((region_count == 0) && (buf_size > 0)) {
-		regions = (region_t *)ck_realloc(regions, sizeof(region_t));
-		regions[0].start_byte = 0;
-		regions[0].end_byte = buf_size - 1;
-		regions[0].state_sequence = NULL;
-		regions[0].state_count = 0;
-		region_count = 1;
-	}
-	*region_count_ref = region_count;
-	return regions;
+
+  *region_count_ref = region_count;
+  return regions;
 }
 
 region_t* extract_requests_sip(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
@@ -1182,7 +1170,7 @@ region_t* extract_requests_ipp(unsigned char* buf, unsigned int buf_size, unsign
     memcpy(&mem[mem_count], buf + byte_count++, 1);
 
     //Check if the last bytes match the HTTP terminator (if data is sent) OR end-of-attributes-tag IPP command (if no data is sent)
-    if ((mem_count > 3) && 
+    if ((mem_count > 3) &&
     ((memcmp(&mem[mem_count - 3], terminator, 4) == 0) || (memcmp(&mem[mem_count], ipp, 1) == 0)) &&
     ((buf_size - byte_count >= 4) && (memcmp(buf + byte_count, "POST", 4) == 0))
     ) {
@@ -1365,7 +1353,7 @@ unsigned int* extract_response_codes_SNTP(unsigned char* buf, unsigned int buf_s
   char terminator_one[1] = {0x24};
   char terminator_two[1] = {0x35};
   char terminator_three[1] = {0x01};
-  
+
 
   mem=(char *)ck_alloc(mem_size);
 
@@ -1379,16 +1367,16 @@ unsigned int* extract_response_codes_SNTP(unsigned char* buf, unsigned int buf_s
     if ((mem_count > 0) && ((memcmp(&mem[mem_count - 1], terminator_one, 1) == 0) || (memcmp(&mem[mem_count - 1], terminator_two, 1) == 0)
     ||(memcmp(&mem[mem_count - 1], terminator_three, 1) == 0))) {
       //Extract the response code which is the first 4 bytes
-     
+
       char temp[5];
       memcpy(temp, mem, 5);
-      
+
       unsigned int message_code = (unsigned int)temp;
       if (message_code == 0)
       {
         break;
 
-      } 
+      }
 
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -1432,7 +1420,7 @@ unsigned int* extract_response_codes_NTP(unsigned char* buf, unsigned int buf_si
   char terminator_one[1] = {0x24};
   char terminator_two[1] = {0x35};
   char terminator_three[1] = {0x01};
-  
+
 
   mem=(char *)ck_alloc(mem_size);
 
@@ -1448,13 +1436,13 @@ unsigned int* extract_response_codes_NTP(unsigned char* buf, unsigned int buf_si
       //Extract the response code which is the first 4 bytes
       char temp[5];
       memcpy(temp, mem, 5);
-      
+
       unsigned int message_code = (unsigned int)temp;
       if (message_code == 0)
       {
         break;
 
-      } 
+      }
 
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -1502,7 +1490,7 @@ unsigned int* extract_response_codes_SNMP(unsigned char* buf, unsigned int buf_s
   char terminator_four[1] = {0x03};
   char terminator_five[1] = {0x04};
   char terminator_six[1] = {0x05};
-  
+
 
   mem=(char *)ck_alloc(mem_size);
 
@@ -1512,7 +1500,7 @@ unsigned int* extract_response_codes_SNMP(unsigned char* buf, unsigned int buf_s
 
   while (byte_count < buf_size) {
     memcpy(&mem[mem_count], buf + byte_count++, 1);
-    
+
 
     if ((mem_count>7) && ((memcmp(&mem[mem_count - 1], terminator_one, 1) == 0) || (memcmp(&mem[mem_count - 1], terminator_two, 1) == 0)
     ||(memcmp(&mem[mem_count - 1], terminator_three, 1) == 0)||(memcmp(&mem[mem_count-1],terminator_four,1)==0) || (memcmp(&mem[mem_count-1],terminator_five,1)==0)
@@ -1526,7 +1514,7 @@ unsigned int* extract_response_codes_SNMP(unsigned char* buf, unsigned int buf_s
       {
         break;
 
-      } 
+      }
 
       state_count++;
       state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
@@ -2044,6 +2032,34 @@ unsigned int* extract_response_codes_rtsp(unsigned char* buf, unsigned int buf_s
   return state_sequence;
 }
 
+unsigned int* extract_response_codes_IEC61850(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
+{
+  unsigned int byte_count = 0;
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+
+  while (byte_count < buf_size) {
+    // Check if we have at least 2 bytes left to read (for the 16-bit response code)
+    if (buf_size - byte_count >= 2) {
+      // Read the response code from the last 16 bits of the response
+      unsigned int response_code = (buf[byte_count] << 8) | buf[byte_count + 1];
+
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      state_sequence[state_count - 1] = response_code;
+
+      // Move to the next response
+      byte_count += 2;
+    } else {
+      // Not enough bytes left for a response code, break the loop
+      break;
+    }
+  }
+
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
 unsigned int* extract_response_codes_ftp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
   char *mem;
@@ -2128,7 +2144,7 @@ unsigned int* extract_response_codes_mqtt(unsigned char* buf, unsigned int buf_s
       unsigned char message_code = (unsigned char)mem[0];
       // printf("[fuzz]message_code is %02x\n",message_code);
 			if (message_code == 0) break;
-      // Create a new state 
+      // Create a new state
 			state_count++;
 			state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
 			state_sequence[state_count - 1] = message_code;
@@ -2143,7 +2159,7 @@ unsigned int* extract_response_codes_mqtt(unsigned char* buf, unsigned int buf_s
       {
         //enlarge the mem buffer
         mem_size = mem_size * 2;
-        mem=(char *)ck_realloc(mem, mem_size); 
+        mem=(char *)ck_realloc(mem, mem_size);
       }
     }
   }
@@ -2282,13 +2298,13 @@ unsigned int* extract_response_codes_ipp(unsigned char* buf, unsigned int buf_si
     //Check if the last two bytes are 0x0D0A0D0A
     if ((mem_count > 3) && (memcmp(&mem[mem_count - 3], terminatorHTTP, 4) == 0)) {
       if ((mem_count >= 5) && (memcmp(mem, http, 5) == 0)) {
-        
+
         memcpy(tempHTTP, &mem[9], 4);
         tempHTTP[3] = 0x0;
         message_code = (unsigned int) atoi(tempHTTP);
 
         if (message_code == 0) break;
-        
+
         if (message_code == 200) {
           //Extract IPP response code (bytes 3 and 4)
           unsigned int third = (unsigned int) buf[byte_count + 2];
@@ -2302,8 +2318,8 @@ unsigned int* extract_response_codes_ipp(unsigned char* buf, unsigned int buf_si
         state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
 
         if (state_sequence == NULL) PFATAL("Unable realloc a memory region to store state sequence");
-        
-        state_sequence[state_count - 1] = message_code;       
+
+        state_sequence[state_count - 1] = message_code;
 
         mem_count = 0;
       } else {

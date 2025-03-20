@@ -34,7 +34,7 @@ endif
 
 CXXFLAGS    ?= -O3 -funroll-loops
 CXXFLAGS    += -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign \
-               -DVERSION=\"$(VERSION)\" -Wno-variadic-macros
+               -DVERSION=\"$(VERSION)\" -Wno-variadic-macros -I/usr/include/c++/11 -I/usr/include/x86_64-linux-gnu/c++/11/
 
 # Mark nodelete to work around unload bug in upstream LLVM 5.0+
 CLANG_CFL    = `$(LLVM_CONFIG) --cxxflags` -Wl,-znodelete -fno-rtti -fpic $(CXXFLAGS)

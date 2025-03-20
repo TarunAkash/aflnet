@@ -68,6 +68,7 @@ afl-gcc: afl-gcc.c $(COMM_HDR) | test_x86
 afl-as: afl-as.c afl-as.h $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)
 	ln -sf afl-as as
+	
 
 afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)
@@ -94,7 +95,7 @@ ifndef AFL_NO_X86
 
 test_build: afl-gcc afl-as afl-showmap
 	@echo "[*] Testing the CC wrapper and instrumentation output..."
-	unset AFL_USE_ASAN AFL_USE_MSAN; AFL_QUIET=1 AFL_INST_RATIO=100 AFL_PATH=. ./$(TEST_CC) $(CFLAGS) test-instr.c -o test-instr $(LDFLAGS)
+	unset AFL_USE_ASAN AFL_USE_MSAN; AFL_QUIET=1 AFL_INST_RATIO=100 ./$(TEST_CC) $(CFLAGS) test-instr.c -o test-instr $(LDFLAGS)
 	./afl-showmap -m none -q -o .test-instr0 ./test-instr < /dev/null
 	echo 1 | ./afl-showmap -m none -q -o .test-instr1 ./test-instr
 	@rm -f test-instr

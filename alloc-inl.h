@@ -147,6 +147,7 @@ static inline void DFL_ck_free(void* mem) {
 
   if (!mem) return;
 
+  // printf("freeing %p\n", mem);
   CHECK_PTR(mem);
 
 #ifdef DEBUG_BUILD
